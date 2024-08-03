@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .header {
+            background-color: #333;
+            color: white;
+            padding: 15px;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        .sidebar {
+            width: 250px;
+            background-color: #f4f4f4;
+            padding: 15px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        .content {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .checkbox-group label {
+            margin-bottom: 10px;
+        }
+        canvas {
+            width: 100% !important;
+            height: 400px;
+            margin-bottom: 20px;
+        }
+        .chart-wrapper {
+            margin-bottom: 20px;
+        }
+        .error {
+            color: red;
+        }
+        .loading {
+            font-weight: bold;
+        }
+        .chart-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .chart-title h2 {
+            margin: 0;
+        }
+        .chart-title .description {
+            font-size: 14px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Dashboard</h1>
+    </div>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Data Selection</h2>
+            <form id="dataForm">
+                <div class="checkbox-group">
+                    <!-- Checkboxes will be populated by JavaScript -->
+                </div>
+            </form>
+        </div>
+        <div class="content" id="chartsContainer">
+            <p id="loadingMessage" class="loading" style="display: none;">Loading data...</p>
+            <p id="errorMessage" class="error"></p>
+        </div>
+    </div>
+
+    <!-- Chart.js and other scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script>
+        const seriesInfo = {
+            'GDP': { unit: 'Billions of Dollars', description: 'Gross Domestic Product' },
+            'CPIAUCSL': { unit: 'Index 1982-1984=100', description: 'Consumer Price Index for All Urban Consumers: All Items' },
+            'UNRATE': { unit: 'Percent', description: 'Unemployment Rate' },
+            'DGS10': { unit: 'Percent', description: '10-Year Treasury Constant Maturity Rate' },
+            'SP500': { unit: 'Index', description: 'S&P 500 Index' },
+            'FEDFUNDS': { unit: 'Percent', description: 'Federal Funds Effective Rate' }
+        };
+
+    async function fetchChartData(series) {
+        const loadingMessage = document.getElementById('loadingMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        loadingMessage.style.display = 'block';
+        errorMessage.textContent = '';
+
+        try {
+            const response = await fetch(`/fetch_chart_data?series=${series}`);
+            const data = await response.json();
+
+            if (data.error) {
+                throw new Error(data.error);
+            }
+
+            // Check for unexpected data format
+            if (!Array.isArray(data) || data.some(row => typeof row.date === 'undefined' || typeof row.value === 'undefined')) {
+                throw new Error('Invalid data format.');
+            }
+
+            return data.map(row => ({
+                date: row.date,
+                value: row.value === null || isNaN(row.value) ? null : row.value
+            }));
+        } catch (error) {
+            console.error('Error fetching chart data:', error);
+            errorMessage.textContent = `Error fetching chart data: ${error.message}`;
+            return [];
+        } finally {
+            loadingMessage.style.display = 'none';
+        }
+    }
+    
+    function createChart(series, data) {
+        const canvasId = `chart-${series}`;
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'chart-wrapper';
+        chartContainer.innerHTML = `
+            <div class="chart-title">
+                <h2>${series}</h2>
+                <span class="description">${seriesInfo[series].description} (${seriesInfo[series].unit})</span>
+            </div>
+            <canvas id="${canvasId}"></canvas>
+        `;
+        document.getElementById('chartsContainer').appendChild(chartContainer);
+
+        new Chart(document.getElementById(canvasId).getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: data.map(row => row.date),
+                datasets: [{
+                    label: series,
+                    data: data.map(row => row.value),
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    fill: false
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'month',
+                            tooltipFormat: 'MMM YYYY'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Date'
+                        },
+                        ticks: {
+                            source: 'auto',
+                            callback: function(value) {
+                                const date = new Date(value);
+                                return `${date.getFullYear()}-${('0' + (date.getMonth() + 1)).slice(-2)}`;
+                            }
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: `${seriesInfo[series].unit}`
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value === null ? 'N/A' : value.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.raw === null ? 'N/A' : context.raw.toLocaleString()} ${seriesInfo[series].unit}`;
+                            }
+                        }
+                    },
+                    zoom: {
+                        zoom: {
+                            wheel: {
+                                enabled: true
+                            },
+                            pinch: {
+                                enabled: true
+                            },
+                            drag: {
+                                enabled: true
+                            },
+                            mode: 'xy'
+                        },
+                        pan: {
+                            enabled: true,
+                            mode: 'xy'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    async function handleCheckboxChange() {
+        document.querySelectorAll('.chart-wrapper').forEach(wrapper => wrapper.remove());
+
+        const selectedSeries = Array.from(document.querySelectorAll('input[name="series"]:checked')).map(input => input.value);
+
+        for (const series of selectedSeries) {
+            const data = await fetchChartData(series);
+            if (data.length > 0) {
+                createChart(series, data);
+            }
+        }
+    }
+
+    function populateCheckboxes() {
+        const checkboxGroup = document.querySelector('.checkbox-group');
+        Object.keys(seriesInfo).forEach(s => {
+            const label = document.createElement('label');
+            label.innerHTML = `
+                <input type="checkbox" name="series" value="${s}" onchange="handleCheckboxChange()"> ${s}
+            `;
+            checkboxGroup.appendChild(label);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        populateCheckboxes();
+    });
+</script>
+
+</body>
+</html>

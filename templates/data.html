@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>선택한 FRED 데이터</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+        .error {
+            color: red;
+        }
+        a {
+            text-decoration: none;
+            color: #007bff;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>선택한 FRED 데이터</h1>
+    {% if data_frames is defined %}
+        {% for series, df in data_frames.items() %}
+            <h2>{{ series }}</h2>
+            {% if df is string %}
+                <p class="error">{{ df }}</p>
+            {% else %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>날짜</th>
+                            <th>값</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for index, row in df.iterrows() %}
+                        <tr>
+                            <td>{{ index.strftime('%Y-%m-%d') }}</td>
+                            <td>{{ row[0] }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        {% endfor %}
+    {% else %}
+        <p>데이터가 없습니다. 다시 선택해주세요.</p>
+    {% endif %}
+    <br>
+    <a href="/">다시 선택</a>
+</body>
+</html>
